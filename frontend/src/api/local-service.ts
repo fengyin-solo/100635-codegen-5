@@ -30,6 +30,11 @@ export function listEntries(key: string, filters: Record<string, string> = {}): 
 
 export function runAction(key: string, id: number, action: string): ActionResult {
   const meta = moduleMeta(key)
+  // 投运前验收移交是认单位的受控台账：状态流转必须走 handover-service 的归属校验，
+  // 通用动作入口一律不接，防止绕过"只有接收单位能改结论"。
+  if (key === 'handover') {
+    return { ok: false, message: '移交单为受控台账，请在「投运前验收移交」页面按归属单位操作' }
+  }
   const target = meta.actionTargets[action]
   if (!target) {
     return { ok: false, message: `${meta.entity}没有登记「${action}」这个动作` }
@@ -56,7 +61,13 @@ export function runAction(key: string, id: number, action: string): ActionResult
   return { ok: true, message: `${meta.entity}已${action}，当前状态「${target}」` }
 }
 
-export function resetModule(key: string): PageResult {
+export async function resetModule(key: string): Promise<PageResult> {
+  if (key === 'handover') {
+    // 受控台账的重置走它自己的落库口，重置后重新镜像，概览读数才不会空。
+    const { resetHandover } = await import('./handover-service')
+    resetHandover()
+    return listEntries(key)
+  }
   resetRows(key)
   return listEntries(key)
 }
